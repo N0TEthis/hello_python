@@ -32,10 +32,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-
-      - name: Ruff format check
+      - name: Ruff check
         run: |
-          ruff format --check .
+          ruff check .
+
 
       - name: Run tests
         run: |
