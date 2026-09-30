@@ -1,0 +1,169 @@
+name: Python CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ruff check
+        run: |
+          ruff check .
+
+      - name: Ruff format check
+        run: |
+          ruff format --check .
+
+      - name: Run tests
+        run: |
+          python -m pytest -v
+
+      - name: Test PyInstaller build
+        run: |
+          python -m PyInstaller \
+            --onefile \
+            --name hello-python \
+            main.py
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: test
+
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-latest
+            artifact: hello-python-linux-x64
+
+          - name: macOS ARM64
+            os: macos-14
+            artifact: hello-python-macos-arm64
+
+          - name: Windows x64
+            os: windows-latest
+            artifact: hello-python-windows-x64.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: |
+          python -m PyInstaller \
+            --onefile \
+            --name hello-python \
+            main.py
+
+      - name: Rename Linux/macOS binary
+        if: runner.os != 'Windows'
+        run: |
+          mv dist/hello-python "dist/${{ matrix.artifact }}"
+
+      - name: Rename Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Move-Item `
+            "dist/hello-python.exe" `
+            "dist/${{ matrix.artifact }}"
+
+      - name: Check binary
+        shell: bash
+        run: |
+          ls -lh dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: hello-python-linux-x64
+          path: release
+
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: hello-python-macos-arm64
+          path: release
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: hello-python-windows-x64.exe
+          path: release
+
+      - name: Show release files
+        run: |
+          ls -lh release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release/hello-python-linux-x64
+            release/hello-python-macos-arm64
+            release/hello-python-windows-x64.exe
