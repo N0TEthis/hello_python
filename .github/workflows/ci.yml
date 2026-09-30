@@ -90,10 +90,7 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          python -m PyInstaller \
-            --onefile \
-            --name hello-python \
-            main.py
+          python -m PyInstaller --onefile --name hello-python main.py
 
       - name: Rename Linux/macOS binary
         if: runner.os != 'Windows'
